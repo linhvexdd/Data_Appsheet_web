@@ -21,11 +21,14 @@
   header h1 { font-size: 17px; margin: 0; flex: 1; }
   main { max-width: 860px; margin: 0 auto; padding: 16px; }
   nav { display: flex; gap: 4px; margin-bottom: 16px; overflow-x: auto; }
-  nav button { flex: 1; min-width: 110px; }
+  nav button { flex: 1; min-width: max-content; white-space: nowrap; }
   .tab.active { background: var(--brand); color: #fff; border-color: var(--brand); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
   .card h2 { font-size: 15px; margin: 0 0 12px; }
   label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  textarea { width: 100%; min-height: 140px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; resize: vertical; }
+  ol.steps { margin: 0 0 8px; padding-left: 20px; font-size: 14px; }
   input, select { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
     background: var(--bg); color: var(--text); font: inherit; }
   button { padding: 9px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--card);
@@ -80,6 +83,7 @@
     <button class="tab active" data-tab="now">Tải ngay</button>
     <button class="tab" data-tab="sched">Lịch tự động</button>
     <button class="tab" data-tab="hist">Lịch sử</button>
+    <button class="tab" data-tab="cookie">Cookie</button>
   </nav>
 
   <!-- TẢI NGAY -->
@@ -128,13 +132,35 @@
       <div class="list" id="histList"></div>
     </div>
   </section>
+
+  <!-- COOKIE -->
+  <section id="tab-cookie" hidden>
+    <div class="card">
+      <h2>Cập nhật cookie đăng nhập AppSheet</h2>
+      <ol class="steps">
+        <li>Mở app AppSheet trên Chrome/Edge, đăng nhập và thấy được view DATA TỔNG HỢP.</li>
+        <li>Bấm biểu tượng <b>Cookie-Editor</b> → <b>Export</b> → <b>JSON</b>.</li>
+        <li>Dán vào ô dưới đây rồi bấm <b>Lưu cookie</b>.</li>
+      </ol>
+      <label for="ckText">Cookie (JSON từ Cookie-Editor)</label>
+      <textarea id="ckText" spellcheck="false" autocomplete="off" placeholder='[{"domain": ".appsheet.com", "name": "...", "value": "..."}]'></textarea>
+      <div class="hint" id="ckInfo"></div>
+      <div class="actions">
+        <button id="btnCkTest">Kiểm tra cookie đang lưu</button>
+        <button class="primary" id="btnCkSave">Lưu cookie</button>
+      </div>
+      <div class="msg" id="ckMsg"></div>
+      <p class="hint">Cookie được mã hóa ngay trên trình duyệt rồi lưu thẳng vào GitHub Secret <code>APPSHEET_COOKIES</code> của repo tải dữ liệu. Trang web không giữ lại cookie, và không ai đọc lại được secret. Mã truy cập GitHub cần thêm quyền <b>Secrets: Read and write</b>.</p>
+      <p class="hint" id="ckUpdated"></p>
+    </div>
+  </section>
 </main>
 
 <dialog id="dlgSettings">
   <h2 style="margin-top:0">Cài đặt</h2>
   <label for="sToken">Mã truy cập GitHub (Fine-grained token)</label>
   <input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
-  <p class="hint">Tạo tại GitHub → Settings → Developer settings → Fine-grained tokens, chọn 2 repo bên dưới, quyền <b>Actions: Read and write</b> và <b>Contents: Read and write</b>.</p>
+  <p class="hint">Tạo tại GitHub → Settings → Developer settings → Fine-grained tokens, chọn 2 repo bên dưới, quyền <b>Actions: Read and write</b>, <b>Contents: Read and write</b> và <b>Secrets: Read and write</b> (để cập nhật cookie trên web).</p>
   <label for="sTarget">Repo tải dữ liệu</label>
   <input id="sTarget" placeholder="linhvexdd/Data_Appsheet">
   <label for="sSched">Repo chứa lịch (repo của trang web này)</label>
@@ -211,7 +237,8 @@ async function gh(path, opts = {}) {
     const hints = { 401: "Mã truy cập sai hoặc đã hết hạn.", 403: "Mã truy cập chưa đủ quyền.", 404: "Không thấy repo hoặc mã chưa được cấp quyền cho repo này." };
     throw new Error(`${hints[r.status] || "Lỗi GitHub " + r.status}${detail ? " (" + detail + ")" : ""}`);
   }
-  return r.status === 204 ? null : r.json();
+  const text = await r.text();
+  return text ? JSON.parse(text) : null;
 }
 const b64encode = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 const b64decode = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, "")), (c) => c.charCodeAt(0)));
@@ -223,7 +250,8 @@ function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp
 // ---------- Tabs ----------
 document.querySelectorAll(".tab").forEach((b) => b.onclick = () => {
   document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === b));
-  for (const t of ["now", "sched", "hist"]) $("tab-" + t).hidden = b.dataset.tab !== t;
+  for (const t of ["now", "sched", "hist", "cookie"]) $("tab-" + t).hidden = b.dataset.tab !== t;
+  if (b.dataset.tab === "cookie") loadCookieInfo();
   if (b.dataset.tab === "sched") loadSchedules();
   if (b.dataset.tab === "hist") loadRuns();
 });
@@ -372,6 +400,85 @@ async function loadRuns() {
 }
 $("btnReload").onclick = loadRuns;
 setInterval(() => { if (!$("tab-hist").hidden) loadRuns(); }, 15000);
+
+// ---------- Cookie ----------
+const SODIUM_URLS = [
+  "https://cdn.jsdelivr.net/npm/libsodium@0.7.13/dist/modules/libsodium.js",
+  "https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.13/dist/modules/libsodium-wrappers.js",
+];
+let sodiumReady = null;
+function loadSodium() {
+  if (!sodiumReady) {
+    sodiumReady = SODIUM_URLS.reduce((p, src) => p.then(() => new Promise((ok, fail) => {
+      const el = document.createElement("script"); el.src = src; el.onload = ok;
+      el.onerror = () => fail(new Error("Không tải được thư viện mã hóa, kiểm tra mạng rồi thử lại."));
+      document.head.appendChild(el);
+    })), Promise.resolve()).then(() => window.sodium.ready).then(() => window.sodium);
+    sodiumReady.catch(() => { sodiumReady = null; });
+  }
+  return sodiumReady;
+}
+function parseCookies(text) {
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error("Nội dung không phải JSON. Hãy dùng Cookie-Editor → Export → JSON rồi dán nguyên văn."); }
+  const list = Array.isArray(data) ? data : data?.cookies;
+  if (!Array.isArray(list) || !list.length) throw new Error("Không thấy danh sách cookie trong nội dung đã dán.");
+  if (!list.every((c) => c && typeof c.name === "string" && "value" in c && typeof c.domain === "string"))
+    throw new Error("Cookie thiếu name, value hoặc domain. Hãy xuất lại bằng Cookie-Editor.");
+  const domains = [...new Set(list.map((c) => c.domain.replace(/^\./, "")))];
+  if (!domains.some((d) => /(^|\.)(appsheet|google)\.com$/.test(d)))
+    throw new Error("Cookie không phải của AppSheet. Hãy mở đúng tab AppSheet trước khi bấm Export.");
+  const exp = list.map((c) => c.expirationDate ?? c.expires).filter((x) => typeof x === "number" && x > 0);
+  return { list, domains, soonest: exp.length ? new Date(Math.min(...exp) * 1000) : null };
+}
+$("ckText").oninput = () => {
+  const t = $("ckText").value.trim(); $("ckMsg").className = "msg";
+  if (!t) return ($("ckInfo").textContent = "");
+  try {
+    const { list, domains, soonest } = parseCookies(t);
+    $("ckInfo").textContent = `✔ ${list.length} cookie (${domains.join(", ")})` +
+      (soonest ? ` · cookie sớm hết hạn nhất: ${soonest.toLocaleString("vi-VN")}` : "");
+  } catch (e) { $("ckInfo").textContent = "✖ " + e.message; }
+};
+async function loadCookieInfo() {
+  if (!cfg.token) return;
+  try {
+    const s = await gh(`/repos/${cfg.target}/actions/secrets/APPSHEET_COOKIES`);
+    $("ckUpdated").textContent = `Cookie hiện tại được cập nhật lúc ${new Date(s.updated_at).toLocaleString("vi-VN")}.`;
+  } catch (e) {
+    $("ckUpdated").textContent = /404/.test(e.message) || /Không thấy/.test(e.message)
+      ? "Chưa có cookie, hoặc mã truy cập chưa có quyền Secrets." : "Không đọc được trạng thái cookie: " + e.message;
+  }
+}
+$("btnCkSave").onclick = async () => {
+  const t = $("ckText").value.trim();
+  if (!t) return show($("ckMsg"), "Dán cookie vào ô trên trước.", false);
+  let parsed;
+  try { parsed = parseCookies(t); } catch (e) { return show($("ckMsg"), e.message, false); }
+  $("btnCkSave").disabled = true;
+  try {
+    const [sodium, key] = await Promise.all([loadSodium(), gh(`/repos/${cfg.target}/actions/secrets/public-key`)]);
+    const sealed = sodium.crypto_box_seal(sodium.from_string(JSON.stringify(parsed.list)),
+      sodium.from_base64(key.key, sodium.base64_variants.ORIGINAL));
+    await gh(`/repos/${cfg.target}/actions/secrets/APPSHEET_COOKIES`, { method: "PUT",
+      body: JSON.stringify({ encrypted_value: sodium.to_base64(sealed, sodium.base64_variants.ORIGINAL), key_id: key.key_id }) });
+    $("ckText").value = ""; $("ckInfo").textContent = "";
+    show($("ckMsg"), `✅ Đã lưu ${parsed.list.length} cookie. Bấm "Kiểm tra cookie đang lưu" để thử đăng nhập.`);
+    loadCookieInfo();
+  } catch (e) {
+    show($("ckMsg"), e.message + (/quyền/.test(e.message) ? " Hãy sửa mã truy cập GitHub, thêm quyền Secrets: Read and write cho repo tải dữ liệu." : ""), false);
+  }
+  $("btnCkSave").disabled = false;
+};
+$("btnCkTest").onclick = async () => {
+  $("btnCkTest").disabled = true;
+  try {
+    await gh(`/repos/${cfg.target}/actions/workflows/${WORKFLOW}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main",
+      inputs: { che_do: "discover", tu_ngay: "", den_ngay: "", cot: "", gia_tri: "", nguon: `Web · Kiểm tra cookie · ${new Date().toLocaleString("vi-VN")}` } }) });
+    show($("ckMsg"), "✅ Đang thử đăng nhập. Khoảng 2 phút nữa xem tab Lịch sử: Xong = cookie dùng tốt, Lỗi = cookie hết hạn (Telegram cũng báo).");
+  } catch (e) { show($("ckMsg"), e.message, false); }
+  $("btnCkTest").disabled = false;
+};
 
 // ---------- Cài đặt ----------
 function openSettings() {
