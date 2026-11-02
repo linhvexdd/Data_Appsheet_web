@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tải data AppSheet</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --brand: #c8102e; --brand-weak: #fbe9ec; --ok: #12805c; --warn: #b54708; --err: #c8102e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161a; --card: #1d2026; --text: #e8eaee; --muted: #9aa3b2; --line: #2d3139;
+      --brand: #ff5a6e; --brand-weak: #3a1d23; --ok: #4ade80; --warn: #fbbf24; --err: #ff6b7d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: 12px 16px;
+    display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 17px; margin: 0; flex: 1; }
+  main { max-width: 860px; margin: 0 auto; padding: 16px; }
+  nav { display: flex; gap: 4px; margin-bottom: 16px; overflow-x: auto; }
+  nav button { flex: 1; min-width: 110px; }
+  .tab.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input, select { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; }
+  button { padding: 9px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+    color: var(--text); font: inherit; cursor: pointer; }
+  button.primary { background: var(--brand); color: #fff; border-color: var(--brand); font-weight: 600; }
+  button.small { padding: 5px 10px; font-size: 13px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chips button { padding: 4px 10px; font-size: 13px; border-radius: 99px; }
+  .days { display: flex; flex-wrap: wrap; gap: 6px; }
+  .days label { margin: 0; display: flex; align-items: center; gap: 4px; color: var(--text);
+    border: 1px solid var(--line); border-radius: 99px; padding: 3px 10px; font-size: 13px; }
+  .days input { width: auto; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .msg { padding: 10px 12px; border-radius: 8px; margin: 12px 0 0; font-size: 14px; display: none; }
+  .msg.show { display: block; }
+  .msg.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+  .msg.err { background: color-mix(in srgb, var(--err) 15%, transparent); color: var(--err); }
+  .list .item { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .list .item:first-child { border-top: 0; }
+  .item .grow { flex: 1; min-width: 0; }
+  .item .title { font-weight: 600; overflow-wrap: anywhere; }
+  .item .sub { font-size: 13px; color: var(--muted); }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+  .b-ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+  .b-run { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+  .b-err { background: color-mix(in srgb, var(--err) 15%, transparent); color: var(--err); }
+  .b-off { background: var(--bg); color: var(--muted); }
+  .switch { width: auto; }
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text);
+    width: min(560px, calc(100vw - 32px)); padding: 20px; }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+  a { color: var(--brand); }
+  [hidden] { display: none !important; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 Tải data AppSheet · DATA TỔNG HỢP</h1>
+  <button class="small" id="btnSettings">⚙️ Cài đặt</button>
+</header>
+<main>
+  <div class="card" id="setupCard" hidden>
+    <h2>Chưa kết nối GitHub</h2>
+    <p>Bấm <b>Cài đặt</b> và dán mã truy cập GitHub (token) để dùng ứng dụng. Mã chỉ lưu trên trình duyệt này.</p>
+  </div>
+
+  <nav>
+    <button class="tab active" data-tab="now">Tải ngay</button>
+    <button class="tab" data-tab="sched">Lịch tự động</button>
+    <button class="tab" data-tab="hist">Lịch sử</button>
+  </nav>
+
+  <!-- TẢI NGAY -->
+  <section id="tab-now">
+    <div class="card">
+      <h2>Chọn bộ lọc</h2>
+      <label for="mode">Kiểu lọc</label>
+      <select id="mode"></select>
+      <div id="dateBox">
+        <div class="row">
+          <div><label for="from">Từ ngày</label><input type="date" id="from"></div>
+          <div><label for="to">Đến ngày</label><input type="date" id="to"></div>
+        </div>
+        <div class="chips" id="quick"></div>
+      </div>
+      <div id="colBox" hidden>
+        <label for="col">Cột</label>
+        <select id="col"></select>
+        <label for="val">Giá trị (có chứa, nhiều giá trị cách nhau bằng dấu ;)</label>
+        <input id="val" placeholder="ví dụ: Bến Nghé; VICT">
+      </div>
+      <div class="actions"><button class="primary" id="btnRun">Tải dữ liệu</button></div>
+      <div class="msg" id="runMsg"></div>
+      <p class="hint">Mất khoảng 2 phút. File Excel được gửi vào Telegram, và lưu ở mục Artifacts của lượt chạy.</p>
+    </div>
+  </section>
+
+  <!-- LỊCH -->
+  <section id="tab-sched" hidden>
+    <div class="card">
+      <h2>Lịch tự động</h2>
+      <div class="list" id="schedList"></div>
+      <div class="actions">
+        <button id="btnAddSched">＋ Thêm lịch</button>
+        <button class="primary" id="btnSaveSched" disabled>Lưu thay đổi</button>
+      </div>
+      <div class="msg" id="schedMsg"></div>
+      <p class="hint">Giờ Việt Nam. Bộ hẹn giờ kiểm tra mỗi 10 phút nên file có thể đến trễ vài phút.</p>
+    </div>
+  </section>
+
+  <!-- LỊCH SỬ -->
+  <section id="tab-hist" hidden>
+    <div class="card">
+      <h2>Các lượt chạy gần đây <button class="small" id="btnReload">↻</button></h2>
+      <div class="list" id="histList"></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlgSettings">
+  <h2 style="margin-top:0">Cài đặt</h2>
+  <label for="sToken">Mã truy cập GitHub (Fine-grained token)</label>
+  <input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
+  <p class="hint">Tạo tại GitHub → Settings → Developer settings → Fine-grained tokens, chọn 2 repo bên dưới, quyền <b>Actions: Read and write</b> và <b>Contents: Read and write</b>.</p>
+  <label for="sTarget">Repo tải dữ liệu</label>
+  <input id="sTarget" placeholder="linhvexdd/Data_Appsheet">
+  <label for="sSched">Repo chứa lịch (repo của trang web này)</label>
+  <input id="sSched" placeholder="linhvexdd/Data_Appsheet_web">
+  <div class="actions">
+    <button id="sForget">Xoá mã khỏi máy này</button>
+    <button id="sCancel">Đóng</button>
+    <button class="primary" id="sSave">Lưu</button>
+  </div>
+  <div class="msg" id="sMsg"></div>
+</dialog>
+
+<dialog id="dlgSched">
+  <h2 style="margin-top:0" id="dsTitle">Lịch</h2>
+  <label for="dsName">Tên lịch</label>
+  <input id="dsName" placeholder="ví dụ: ETD 7 ngày tới, mỗi sáng">
+  <div class="row">
+    <div><label for="dsTime">Giờ chạy</label><input id="dsTime" type="time" value="07:30"></div>
+    <div><label for="dsMode">Kiểu lọc</label><select id="dsMode"></select></div>
+  </div>
+  <label>Ngày trong tuần</label>
+  <div class="days" id="dsDays"></div>
+  <div id="dsDateBox">
+    <div class="row">
+      <div><label for="dsFrom">Từ ngày</label><input id="dsFrom" placeholder="hom_nay"></div>
+      <div><label for="dsTo">Đến ngày</label><input id="dsTo" placeholder="+7"></div>
+    </div>
+    <p class="hint">Dùng <b>hom_nay</b>, <b>hom_qua</b>, <b>ngay_mai</b>, <b>+7</b> (7 ngày tới), <b>-7</b> (7 ngày trước) hoặc ngày cố định dd/mm/yyyy. Để trống là không giới hạn.</p>
+  </div>
+  <div id="dsColBox" hidden>
+    <label for="dsCol">Cột</label><select id="dsCol"></select>
+    <label for="dsVal">Giá trị</label><input id="dsVal">
+  </div>
+  <label class="days" style="margin-top:12px"><input type="checkbox" id="dsOn"> Bật lịch này</label>
+  <div class="actions">
+    <button id="dsDelete">Xoá lịch</button>
+    <button id="dsCancel">Huỷ</button>
+    <button class="primary" id="dsOk">Xong</button>
+  </div>
+</dialog>
+
+<script>
+const MODES = [
+  ["all", "Tải tất cả"], ["etd", "Lọc theo ETD"], ["eta", "Lọc theo ETA"],
+  ["ha_hang", "Lọc theo Ngày hạ hàng Cảng xuất"], ["column", "Lọc theo cột khác"],
+];
+const MODE_NAME = Object.fromEntries(MODES);
+const DAY_NAMES = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
+const WORKFLOW = "tai-data-appsheet.yml";
+const $ = (id) => document.getElementById(id);
+
+function store(key, val) {
+  try { if (val === undefined) return localStorage.getItem(key) || ""; localStorage.setItem(key, val); } catch { return ""; }
+}
+function guessPagesRepo() {
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  const seg = location.pathname.split("/").filter(Boolean)[0];
+  return m && seg ? `${m[1]}/${seg}` : "";
+}
+const cfg = {
+  get token() { return store("gh_token"); },
+  get target() { return store("gh_target") || "linhvexdd/Data_Appsheet"; },
+  get sched() { return store("gh_sched") || guessPagesRepo() || this.target; },
+};
+
+async function gh(path, opts = {}) {
+  const r = await fetch("https://api.github.com" + path, {
+    ...opts,
+    headers: { Authorization: `Bearer ${cfg.token}`, Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28", ...(opts.body ? { "Content-Type": "application/json" } : {}) },
+  });
+  if (!r.ok) {
+    let detail = ""; try { detail = (await r.json()).message; } catch {}
+    const hints = { 401: "Mã truy cập sai hoặc đã hết hạn.", 403: "Mã truy cập chưa đủ quyền.", 404: "Không thấy repo hoặc mã chưa được cấp quyền cho repo này." };
+    throw new Error(`${hints[r.status] || "Lỗi GitHub " + r.status}${detail ? " (" + detail + ")" : ""}`);
+  }
+  return r.status === 204 ? null : r.json();
+}
+const b64encode = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+const b64decode = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, "")), (c) => c.charCodeAt(0)));
+
+function show(el, text, ok = true) { el.textContent = text; el.className = "msg show " + (ok ? "ok" : "err"); }
+function fillModes(sel) { sel.innerHTML = MODES.map(([v, t]) => `<option value="${v}">${t}</option>`).join(""); }
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+
+// ---------- Tabs ----------
+document.querySelectorAll(".tab").forEach((b) => b.onclick = () => {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === b));
+  for (const t of ["now", "sched", "hist"]) $("tab-" + t).hidden = b.dataset.tab !== t;
+  if (b.dataset.tab === "sched") loadSchedules();
+  if (b.dataset.tab === "hist") loadRuns();
+});
+
+// ---------- Columns ----------
+let COLUMNS = [];
+fetch("columns.json").then((r) => r.json()).then((c) => {
+  COLUMNS = c;
+  const opts = c.map((x) => `<option>${esc(x)}</option>`).join("");
+  $("col").innerHTML = opts; $("dsCol").innerHTML = opts;
+}).catch(() => {});
+
+// ---------- Tải ngay ----------
+fillModes($("mode")); fillModes($("dsMode"));
+const iso = (d) => d.toISOString().slice(0, 10);
+const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d; };
+const QUICK = [
+  ["Hôm nay", 0, 0], ["7 ngày tới", 0, 7], ["7 ngày qua", -7, 0], ["30 ngày qua", -30, 0],
+  ["Tháng này", "m0"], ["Tháng trước", "m-1"],
+];
+$("quick").innerHTML = QUICK.map((q, i) => `<button data-i="${i}">${q[0]}</button>`).join("");
+$("quick").onclick = (e) => {
+  const q = QUICK[e.target.dataset.i]; if (!q) return;
+  if (typeof q[1] === "string") {
+    const k = +q[1].slice(1), n = new Date(), a = new Date(n.getFullYear(), n.getMonth() + k, 1),
+      b = new Date(n.getFullYear(), n.getMonth() + k + 1, 0);
+    $("from").value = iso(new Date(a - a.getTimezoneOffset() * 6e4)); $("to").value = iso(new Date(b - b.getTimezoneOffset() * 6e4));
+  } else { $("from").value = iso(addDays(q[1])); $("to").value = iso(addDays(q[2])); }
+};
+function syncMode() {
+  const m = $("mode").value;
+  $("dateBox").hidden = !["etd", "eta", "ha_hang"].includes(m);
+  $("colBox").hidden = m !== "column";
+}
+$("mode").onchange = syncMode; syncMode();
+const toVN = (v) => v ? v.split("-").reverse().join("/") : "";
+
+$("btnRun").onclick = async () => {
+  const m = $("mode").value;
+  if (m === "column" && !$("val").value.trim()) return show($("runMsg"), "Nhập giá trị cần lọc.", false);
+  const inputs = { che_do: m, tu_ngay: "", den_ngay: "", cot: "", gia_tri: "" };
+  let label = MODE_NAME[m];
+  if (!$("dateBox").hidden) {
+    inputs.tu_ngay = toVN($("from").value); inputs.den_ngay = toVN($("to").value);
+    label += ` ${inputs.tu_ngay || "…"} → ${inputs.den_ngay || "…"}`;
+  }
+  if (m === "column") { inputs.cot = $("col").value; inputs.gia_tri = $("val").value.trim(); label += `: ${inputs.cot} = ${inputs.gia_tri}`; }
+  inputs.nguon = `Web · ${label} · ${new Date().toLocaleString("vi-VN")}`;
+  $("btnRun").disabled = true;
+  try {
+    await gh(`/repos/${cfg.target}/actions/workflows/${WORKFLOW}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main", inputs }) });
+    show($("runMsg"), "✅ Đã gửi yêu cầu. Khoảng 2 phút nữa file sẽ đến Telegram. Xem tiến độ ở tab Lịch sử.");
+  } catch (e) { show($("runMsg"), e.message, false); }
+  $("btnRun").disabled = false;
+};
+
+// ---------- Lịch ----------
+let schedData = { lich: [] }, schedSha = null, editing = -1;
+$("dsDays").innerHTML = DAY_NAMES.map((d, i) => `<label><input type="checkbox" value="${i + 1}">${d}</label>`).join("");
+const REL = (v) => !v ? "…" : v === "hom_nay" ? "hôm nay" : v === "hom_qua" ? "hôm qua" : v === "ngay_mai" ? "ngày mai"
+  : /^[+-]\d+$/.test(v) ? (v[0] === "+" ? `${v.slice(1)} ngày tới` : `${v.slice(1)} ngày trước`) : v;
+function describe(s) {
+  const days = (s.thu?.length ? s.thu : [1, 2, 3, 4, 5, 6, 7]);
+  const dayTxt = days.length === 7 ? "Mỗi ngày" : days.map((d) => DAY_NAMES[d - 1]).join(", ");
+  let f = MODE_NAME[s.che_do] || s.che_do;
+  if (["etd", "eta", "ha_hang"].includes(s.che_do)) f += ` từ ${REL(s.tu_ngay)} đến ${REL(s.den_ngay)}`;
+  if (s.che_do === "column") f += `: ${s.cot} = ${s.gia_tri}`;
+  return `${s.gio} · ${dayTxt} · ${f}`;
+}
+function renderSchedules() {
+  const L = schedData.lich;
+  $("schedList").innerHTML = L.length ? L.map((s, i) => `
+    <div class="item">
+      <div class="grow"><div class="title">${esc(s.ten || s.id)}</div><div class="sub">${esc(describe(s))}</div></div>
+      <span class="badge ${s.bat ? "b-ok" : "b-off"}">${s.bat ? "Đang bật" : "Tắt"}</span>
+      <button class="small" data-edit="${i}">Sửa</button>
+    </div>`).join("") : `<p class="hint">Chưa có lịch nào.</p>`;
+}
+$("schedList").onclick = (e) => { if (e.target.dataset.edit !== undefined) openSched(+e.target.dataset.edit); };
+async function loadSchedules() {
+  if (!cfg.token) return;
+  try {
+    const f = await gh(`/repos/${cfg.sched}/contents/schedules.json`);
+    schedSha = f.sha; schedData = JSON.parse(b64decode(f.content));
+    renderSchedules(); $("btnSaveSched").disabled = true; $("schedMsg").className = "msg";
+  } catch (e) { show($("schedMsg"), "Không đọc được lịch: " + e.message, false); }
+}
+function syncDsMode() {
+  const m = $("dsMode").value;
+  $("dsDateBox").hidden = !["etd", "eta", "ha_hang"].includes(m);
+  $("dsColBox").hidden = m !== "column";
+}
+$("dsMode").onchange = syncDsMode;
+function openSched(i) {
+  editing = i;
+  const s = i >= 0 ? schedData.lich[i] : { ten: "", gio: "07:30", thu: [1, 2, 3, 4, 5, 6], che_do: "etd", tu_ngay: "hom_nay", den_ngay: "+7", bat: true };
+  $("dsTitle").textContent = i >= 0 ? "Sửa lịch" : "Thêm lịch";
+  $("dsName").value = s.ten || ""; $("dsTime").value = s.gio; $("dsMode").value = s.che_do;
+  $("dsFrom").value = s.tu_ngay || ""; $("dsTo").value = s.den_ngay || "";
+  $("dsCol").value = s.cot || COLUMNS[0] || ""; $("dsVal").value = s.gia_tri || ""; $("dsOn").checked = !!s.bat;
+  const days = s.thu?.length ? s.thu : [1, 2, 3, 4, 5, 6, 7];
+  $("dsDays").querySelectorAll("input").forEach((c) => c.checked = days.includes(+c.value));
+  $("dsDelete").hidden = i < 0; syncDsMode(); $("dlgSched").showModal();
+}
+$("btnAddSched").onclick = () => openSched(-1);
+$("dsCancel").onclick = () => $("dlgSched").close();
+$("dsDelete").onclick = () => {
+  if (!confirm("Xoá lịch này?")) return;
+  schedData.lich.splice(editing, 1); renderSchedules(); $("btnSaveSched").disabled = false; $("dlgSched").close();
+};
+$("dsOk").onclick = () => {
+  const thu = [...$("dsDays").querySelectorAll("input:checked")].map((c) => +c.value);
+  if (!thu.length) return alert("Chọn ít nhất 1 ngày trong tuần.");
+  const m = $("dsMode").value, isDate = ["etd", "eta", "ha_hang"].includes(m);
+  const s = {
+    id: editing >= 0 ? schedData.lich[editing].id : "lich-" + Date.now().toString(36),
+    ten: $("dsName").value.trim() || MODE_NAME[m], bat: $("dsOn").checked, gio: $("dsTime").value || "07:30", thu, che_do: m,
+    tu_ngay: isDate ? $("dsFrom").value.trim() : "", den_ngay: isDate ? $("dsTo").value.trim() : "",
+    cot: m === "column" ? $("dsCol").value : "", gia_tri: m === "column" ? $("dsVal").value.trim() : "",
+  };
+  if (editing >= 0) schedData.lich[editing] = s; else schedData.lich.push(s);
+  renderSchedules(); $("btnSaveSched").disabled = false; $("dlgSched").close();
+};
+$("btnSaveSched").onclick = async () => {
+  $("btnSaveSched").disabled = true;
+  try {
+    const r = await gh(`/repos/${cfg.sched}/contents/schedules.json`, { method: "PUT", body: JSON.stringify({
+      message: "Cập nhật lịch tự động từ web", sha: schedSha, content: b64encode(JSON.stringify(schedData, null, 2) + "\n") }) });
+    schedSha = r.content.sha; show($("schedMsg"), "✅ Đã lưu lịch.");
+  } catch (e) { show($("schedMsg"), "Lưu thất bại: " + e.message, false); $("btnSaveSched").disabled = false; }
+};
+
+// ---------- Lịch sử ----------
+async function loadRuns() {
+  if (!cfg.token) return;
+  $("histList").innerHTML = `<p class="hint">Đang tải…</p>`;
+  try {
+    const d = await gh(`/repos/${cfg.target}/actions/workflows/${WORKFLOW}/runs?per_page=15`);
+    $("histList").innerHTML = d.workflow_runs.map((r) => {
+      const st = r.status !== "completed" ? ["b-run", "Đang chạy"] : r.conclusion === "success" ? ["b-ok", "Xong"] : ["b-err", "Lỗi"];
+      return `<div class="item"><div class="grow"><div class="title">${esc(r.display_title)}</div>
+        <div class="sub">${new Date(r.created_at).toLocaleString("vi-VN")} · <a href="${r.html_url}" target="_blank" rel="noopener">Xem trên GitHub</a></div></div>
+        <span class="badge ${st[0]}">${st[1]}</span></div>`;
+    }).join("") || `<p class="hint">Chưa có lượt chạy.</p>`;
+  } catch (e) { $("histList").innerHTML = `<p class="msg show err">${esc(e.message)}</p>`; }
+}
+$("btnReload").onclick = loadRuns;
+setInterval(() => { if (!$("tab-hist").hidden) loadRuns(); }, 15000);
+
+// ---------- Cài đặt ----------
+function openSettings() {
+  $("sToken").value = cfg.token; $("sTarget").value = cfg.target; $("sSched").value = cfg.sched;
+  $("sMsg").className = "msg"; $("dlgSettings").showModal();
+}
+$("btnSettings").onclick = openSettings;
+$("sCancel").onclick = () => $("dlgSettings").close();
+$("sForget").onclick = () => { store("gh_token", ""); $("sToken").value = ""; refreshSetup(); show($("sMsg"), "Đã xoá mã khỏi máy này."); };
+$("sSave").onclick = async () => {
+  store("gh_token", $("sToken").value.trim()); store("gh_target", $("sTarget").value.trim()); store("gh_sched", $("sSched").value.trim());
+  try {
+    await gh(`/repos/${cfg.target}`); await gh(`/repos/${cfg.sched}`);
+    show($("sMsg"), "✅ Kết nối thành công."); refreshSetup();
+    setTimeout(() => $("dlgSettings").close(), 800);
+  } catch (e) { show($("sMsg"), e.message, false); }
+};
+function refreshSetup() { $("setupCard").hidden = !!cfg.token; }
+refreshSetup();
+if (!cfg.token) openSettings();
+</script>
+</body>
+</html>

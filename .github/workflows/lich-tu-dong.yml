@@ -1,0 +1,25 @@
+name: Lịch tự động
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # kiểm tra mỗi 10 phút
+  workflow_dispatch:
+
+concurrency:
+  group: lich-tu-dong
+  cancel-in-progress: false
+
+jobs:
+  kiem-tra-lich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Gọi các lịch đến giờ
+        env:
+          DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          TARGET_REPO: ${{ vars.TARGET_REPO || 'linhvexdd/Data_Appsheet' }}
+        run: python scheduler.py

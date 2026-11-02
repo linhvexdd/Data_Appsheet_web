@@ -1,0 +1,16 @@
+{
+  "lich": [
+    {
+      "id": "etd-sang",
+      "ten": "ETD 7 ngày tới, mỗi sáng",
+      "bat": false,
+      "gio": "07:30",
+      "thu": [1, 2, 3, 4, 5, 6],
+      "che_do": "etd",
+      "tu_ngay": "hom_nay",
+      "den_ngay": "+7",
+      "cot": "",
+      "gia_tri": ""
+    }
+  ]
+}
