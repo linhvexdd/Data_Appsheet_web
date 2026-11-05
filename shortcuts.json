@@ -7,6 +7,14 @@
       "den_ngay": "",
       "cot": "",
       "gia_tri": ""
+    },
+    {
+      "ten": "Hạ hàng 2026",
+      "che_do": "ha_hang",
+      "tu_ngay": "01/01/2026",
+      "den_ngay": "hom_nay",
+      "cot": "",
+      "gia_tri": ""
     }
   ]
 }
