@@ -122,6 +122,7 @@
       </div>
       <div class="msg" id="schedMsg"></div>
       <p class="hint">Giờ Việt Nam. Bộ hẹn giờ kiểm tra mỗi 10 phút nên file có thể đến trễ vài phút.</p>
+      <p class="hint" id="schedCost"></p>
     </div>
   </section>
 
@@ -189,12 +190,34 @@
   <h2 style="margin-top:0" id="dsTitle">Lịch</h2>
   <label for="dsName">Tên lịch</label>
   <input id="dsName" placeholder="ví dụ: ETD 7 ngày tới, mỗi sáng">
+  <label for="dsFreq">Tần suất</label>
+  <select id="dsFreq">
+    <option value="ngay">Mỗi ngày 1 lần (chọn thứ trong tuần)</option>
+    <option value="lap">Lặp lại nhiều lần trong ngày</option>
+    <option value="thang">Hàng tháng (chọn ngày trong tháng)</option>
+  </select>
   <div class="row">
-    <div><label for="dsTime">Giờ chạy</label><input id="dsTime" type="time" value="07:30"></div>
-    <div><label for="dsMode">Kiểu lọc</label><select id="dsMode"></select></div>
+    <div><label for="dsTime" id="dsTimeLbl">Giờ chạy</label><input id="dsTime" type="time" value="07:30"></div>
+    <div id="dsEndBox" hidden><label for="dsEnd">Đến giờ</label><input id="dsEnd" type="time" value="17:30"></div>
   </div>
-  <label>Ngày trong tuần</label>
-  <div class="days" id="dsDays"></div>
+  <div id="dsEveryBox" hidden>
+    <label for="dsEvery">Lặp lại mỗi</label>
+    <select id="dsEvery">
+      <option value="30">30 phút</option><option value="60">1 giờ</option><option value="120">2 giờ</option>
+      <option value="180">3 giờ</option><option value="240">4 giờ</option><option value="360">6 giờ</option>
+      <option value="720">12 giờ</option>
+    </select>
+  </div>
+  <div id="dsWeekBox">
+    <label>Ngày trong tuần</label>
+    <div class="days" id="dsDays"></div>
+  </div>
+  <div id="dsMonthBox" hidden>
+    <label>Ngày trong tháng</label>
+    <div class="days" id="dsMonthDays"></div>
+  </div>
+  <p class="hint" id="dsCost"></p>
+  <label for="dsMode">Kiểu lọc</label><select id="dsMode"></select>
   <div id="dsDateBox">
     <div class="row">
       <div><label for="dsFrom">Từ ngày</label><input id="dsFrom" placeholder="hom_nay"></div>
@@ -325,13 +348,31 @@ let schedData = { lich: [] }, schedSha = null, editing = -1;
 $("dsDays").innerHTML = DAY_NAMES.map((d, i) => `<label><input type="checkbox" value="${i + 1}">${d}</label>`).join("");
 const REL = (v) => !v ? "…" : v === "hom_nay" ? "hôm nay" : v === "hom_qua" ? "hôm qua" : v === "ngay_mai" ? "ngày mai"
   : /^[+-]\d+$/.test(v) ? (v[0] === "+" ? `${v.slice(1)} ngày tới` : `${v.slice(1)} ngày trước`) : v;
+$("dsMonthDays").innerHTML = [...Array(31)].map((_, i) => `<label><input type="checkbox" value="${i + 1}">${i + 1}</label>`).join("")
+  + `<label><input type="checkbox" value="0">Cuối tháng</label>`;
+const EVERY_TXT = (m) => m % 60 ? `${m} phút` : `${m / 60} giờ`;
+const toMin = (t) => { const [h, m] = (t || "0:0").split(":").map(Number); return h * 60 + m; };
+// Ước lượng số lượt chạy mỗi tháng của 1 lịch (mỗi lượt tốn khoảng 2 phút GitHub Actions)
+function runsPerMonth(s) {
+  const f = s.tan_suat || "ngay";
+  if (f === "thang") return (s.ngay_thang?.length || 1);
+  const perWeek = (s.thu?.length || 7);
+  const perDay = f === "lap" ? Math.max(0, Math.floor((toMin(s.den_gio || "23:59") - toMin(s.gio)) / Math.max(+s.moi || 60, 30)) + 1) : 1;
+  return Math.round(perDay * perWeek * 30 / 7);
+}
+const costTxt = (n) => `Khoảng ${n} lượt/tháng ≈ ${n * 2} phút GitHub Actions (gói Free có 2.000 phút/tháng cho repo riêng tư).`;
 function describe(s) {
+  const f0 = s.tan_suat || "ngay";
   const days = (s.thu?.length ? s.thu : [1, 2, 3, 4, 5, 6, 7]);
   const dayTxt = days.length === 7 ? "Mỗi ngày" : days.map((d) => DAY_NAMES[d - 1]).join(", ");
+  let when;
+  if (f0 === "thang") when = `${s.gio} · Hàng tháng ngày ${(s.ngay_thang || [1]).map((d) => d === 0 ? "cuối tháng" : d).join(", ")}`;
+  else if (f0 === "lap") when = `${s.gio}–${s.den_gio || "23:59"}, mỗi ${EVERY_TXT(+s.moi || 60)} · ${dayTxt}`;
+  else when = `${s.gio} · ${dayTxt}`;
   let f = MODE_NAME[s.che_do] || s.che_do;
   if (["etd", "eta", "ha_hang"].includes(s.che_do)) f += ` từ ${REL(s.tu_ngay)} đến ${REL(s.den_ngay)}`;
   if (s.che_do === "column") f += `: ${s.cot} = ${s.gia_tri}`;
-  return `${s.gio} · ${dayTxt} · ${f}`;
+  return `${when} · ${f}`;
 }
 function renderSchedules() {
   const L = schedData.lich;
@@ -341,6 +382,8 @@ function renderSchedules() {
       <span class="badge ${s.bat ? "b-ok" : "b-off"}">${s.bat ? "Đang bật" : "Tắt"}</span>
       <button class="small" data-edit="${i}">Sửa</button>
     </div>`).join("") : `<p class="hint">Chưa có lịch nào.</p>`;
+  const total = L.filter((s) => s.bat).reduce((a, s) => a + runsPerMonth(s), 0);
+  $("schedCost").textContent = total ? "Các lịch đang bật: " + costTxt(total) + (total * 2 > 1600 ? " ⚠️ Gần hết hạn mức, nên giảm tần suất." : "") : "";
 }
 $("schedList").onclick = (e) => { if (e.target.dataset.edit !== undefined) openSched(+e.target.dataset.edit); };
 async function loadSchedules() {
@@ -357,6 +400,21 @@ function syncDsMode() {
   $("dsColBox").hidden = m !== "column";
 }
 $("dsMode").onchange = syncDsMode;
+function dsDraft() {
+  return { tan_suat: $("dsFreq").value, gio: $("dsTime").value || "07:30", den_gio: $("dsEnd").value || "23:59", moi: +$("dsEvery").value,
+    thu: [...$("dsDays").querySelectorAll("input:checked")].map((c) => +c.value),
+    ngay_thang: [...$("dsMonthDays").querySelectorAll("input:checked")].map((c) => +c.value) };
+}
+function syncFreq() {
+  const f = $("dsFreq").value;
+  $("dsEndBox").hidden = $("dsEveryBox").hidden = f !== "lap";
+  $("dsWeekBox").hidden = f === "thang"; $("dsMonthBox").hidden = f !== "thang";
+  $("dsTimeLbl").textContent = f === "lap" ? "Từ giờ" : "Giờ chạy";
+  const n = runsPerMonth(dsDraft());
+  $("dsCost").textContent = costTxt(n) + (n * 2 > 1600 ? " ⚠️ Quá nhiều, nên giảm tần suất." : "");
+}
+["dsFreq", "dsTime", "dsEnd", "dsEvery"].forEach((id) => $(id).addEventListener("change", syncFreq));
+$("dsDays").addEventListener("change", syncFreq); $("dsMonthDays").addEventListener("change", syncFreq);
 function openSched(i) {
   editing = i;
   const s = i >= 0 ? schedData.lich[i] : { ten: "", gio: "07:30", thu: [1, 2, 3, 4, 5, 6], che_do: "etd", tu_ngay: "hom_nay", den_ngay: "+7", bat: true };
@@ -366,7 +424,10 @@ function openSched(i) {
   $("dsCol").value = s.cot || COLUMNS[0] || ""; $("dsVal").value = s.gia_tri || ""; $("dsOn").checked = !!s.bat;
   const days = s.thu?.length ? s.thu : [1, 2, 3, 4, 5, 6, 7];
   $("dsDays").querySelectorAll("input").forEach((c) => c.checked = days.includes(+c.value));
-  $("dsDelete").hidden = i < 0; syncDsMode(); $("dlgSched").showModal();
+  $("dsFreq").value = s.tan_suat || "ngay"; $("dsEnd").value = s.den_gio || "17:30"; $("dsEvery").value = String(s.moi || 60);
+  const mdays = s.ngay_thang?.length ? s.ngay_thang : [1];
+  $("dsMonthDays").querySelectorAll("input").forEach((c) => c.checked = mdays.includes(+c.value));
+  $("dsDelete").hidden = i < 0; syncDsMode(); syncFreq(); $("dlgSched").showModal();
 }
 $("btnAddSched").onclick = () => openSched(-1);
 $("dsCancel").onclick = () => $("dlgSched").close();
@@ -375,12 +436,17 @@ $("dsDelete").onclick = () => {
   schedData.lich.splice(editing, 1); renderSchedules(); $("btnSaveSched").disabled = false; $("dlgSched").close();
 };
 $("dsOk").onclick = () => {
-  const thu = [...$("dsDays").querySelectorAll("input:checked")].map((c) => +c.value);
-  if (!thu.length) return alert("Chọn ít nhất 1 ngày trong tuần.");
+  const dr = dsDraft();
+  if (dr.tan_suat === "thang" ? !dr.ngay_thang.length : !dr.thu.length)
+    return alert(dr.tan_suat === "thang" ? "Chọn ít nhất 1 ngày trong tháng." : "Chọn ít nhất 1 ngày trong tuần.");
+  if (dr.tan_suat === "lap" && toMin(dr.den_gio) < toMin(dr.gio)) return alert("Giờ kết thúc phải sau giờ bắt đầu.");
+  const thu = dr.thu;
   const m = $("dsMode").value, isDate = ["etd", "eta", "ha_hang"].includes(m);
   const s = {
     id: editing >= 0 ? schedData.lich[editing].id : "lich-" + Date.now().toString(36),
-    ten: $("dsName").value.trim() || MODE_NAME[m], bat: $("dsOn").checked, gio: $("dsTime").value || "07:30", thu, che_do: m,
+    ten: $("dsName").value.trim() || MODE_NAME[m], bat: $("dsOn").checked, tan_suat: dr.tan_suat, gio: dr.gio,
+    ...(dr.tan_suat === "lap" ? { den_gio: dr.den_gio, moi: dr.moi } : {}),
+    ...(dr.tan_suat === "thang" ? { ngay_thang: dr.ngay_thang } : { thu }), che_do: m,
     tu_ngay: isDate ? $("dsFrom").value.trim() : "", den_ngay: isDate ? $("dsTo").value.trim() : "",
     cot: m === "column" ? $("dsCol").value : "", gia_tri: m === "column" ? $("dsVal").value.trim() : "",
   };
