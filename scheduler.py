@@ -36,19 +36,54 @@ def gh(method: str, path: str, token: str, body: dict | None = None):
         return json.loads(raw) if raw else None
 
 
-def due_occurrence(s: dict, now: datetime) -> datetime | None:
-    """Lần chạy gần nhất (hôm nay hoặc hôm qua) đã đến giờ nhưng chưa quá MAX_LATE."""
+def _hm(text: str) -> tuple[int, int]:
+    hh, mm = (int(x) for x in text.split(":"))
+    return hh, mm
+
+
+def occurrences(s: dict, d) -> list[datetime]:
+    """Các giờ chạy của lịch trong ngày d, theo tần suất:
+    - "ngay" (mặc định): 1 lần lúc `gio`, vào các thứ trong `thu`
+    - "lap": từ `gio` đến `den_gio`, cứ `moi` phút 1 lần, vào các thứ trong `thu`
+    - "thang": 1 lần lúc `gio`, vào các ngày trong `ngay_thang` (0 = ngày cuối tháng)
+    """
     try:
-        hh, mm = (int(x) for x in s["gio"].split(":"))
+        hh, mm = _hm(s["gio"])
     except (KeyError, ValueError):
-        return None
-    days = set(s.get("thu") or [1, 2, 3, 4, 5, 6, 7])  # 1 = Thứ Hai ... 7 = Chủ nhật
-    for back in (0, 1):
-        d = (now - timedelta(days=back)).date()
-        occ = datetime(d.year, d.month, d.day, hh, mm, tzinfo=TZ)
-        if d.isoweekday() in days and occ <= now and now - occ <= MAX_LATE:
-            return occ
-    return None
+        return []
+    start = datetime(d.year, d.month, d.day, hh, mm, tzinfo=TZ)
+    kind = s.get("tan_suat") or "ngay"
+    if kind == "thang":
+        days = set(s.get("ngay_thang") or [1])
+        last_day = (d.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        ok = d.day in days or (0 in days and d == last_day)
+        return [start] if ok else []
+    if d.isoweekday() not in set(s.get("thu") or [1, 2, 3, 4, 5, 6, 7]):  # 1 = Thứ Hai ... 7 = Chủ nhật
+        return []
+    if kind != "lap":
+        return [start]
+    step = max(int(s.get("moi") or 60), 30)
+    try:
+        eh, em = _hm(s.get("den_gio") or "23:59")
+    except ValueError:
+        eh, em = 23, 59
+    end = datetime(d.year, d.month, d.day, eh, em, tzinfo=TZ)
+    out, t = [], start
+    while t <= end:
+        out.append(t)
+        t += timedelta(minutes=step)
+    return out
+
+
+def due_occurrence(s: dict, now: datetime) -> datetime | None:
+    """Lần chạy gần nhất (hôm nay hoặc hôm qua) đã đến giờ nhưng chưa quá MAX_LATE.
+    Lịch lặp bị trễ nhiều lượt thì chỉ chạy lượt mới nhất, không chạy bù."""
+    best = None
+    for back in (1, 0):
+        for occ in occurrences(s, (now - timedelta(days=back)).date()):
+            if occ <= now and now - occ <= MAX_LATE:
+                best = occ
+    return best
 
 
 def main() -> int:
