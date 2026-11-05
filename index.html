@@ -94,10 +94,11 @@
   <!-- TẢI NGAY -->
   <section id="tab-now">
     <div class="card">
-      <h2>Tải nhanh <button class="small" id="btnQuickEdit" style="float:right">Sửa</button></h2>
+      <h2>Tải nhanh <button class="small" id="btnQuickEdit" style="float:right">✏️ Tùy chỉnh</button></h2>
       <div class="quick-grid" id="quickGrid"></div>
+      <div class="actions" id="quickEditBar" hidden><button id="btnQuickNew">＋ Thêm nút</button></div>
       <div class="msg" id="quickMsg"></div>
-      <p class="hint">Bấm 1 nút là tải ngay. Các nút này cũng hiện trong menu bot Telegram. Muốn thêm nút: chọn bộ lọc bên dưới rồi bấm <b>Lưu thành nút tải nhanh</b>.</p>
+      <p class="hint">Bấm 1 nút là tải ngay. Các nút này cũng hiện trong menu bot Telegram. Bấm <b>Tùy chỉnh</b> để sửa, xoá, đổi thứ tự hoặc thêm nút.</p>
     </div>
     <div class="card">
       <h2>Chọn bộ lọc</h2>
@@ -195,6 +196,33 @@
     <button class="primary" id="sSave">Lưu</button>
   </div>
   <div class="msg" id="sMsg"></div>
+</dialog>
+
+<dialog id="dlgQuick">
+  <h2 style="margin-top:0" id="dqTitle">Sửa nút</h2>
+  <label for="dqName">Tên nút</label>
+  <input id="dqName" maxlength="40" placeholder="ví dụ: ETD tuần này">
+  <label for="dqMode">Kiểu lọc</label><select id="dqMode"></select>
+  <div id="dqDateBox">
+    <div class="row">
+      <div><label for="dqFrom">Từ ngày</label><input id="dqFrom" placeholder="hom_nay"></div>
+      <div><label for="dqTo">Đến ngày</label><input id="dqTo" placeholder="+7"></div>
+    </div>
+    <div class="chips" id="dqChips"></div>
+    <p class="hint">Ngày tính theo hôm bấm nút: <b>hom_nay</b>, <b>hom_qua</b>, <b>ngay_mai</b>, <b>+7</b> (7 ngày tới), <b>-7</b> (7 ngày trước), hoặc ngày cố định dd/mm/yyyy. Để trống là không giới hạn.</p>
+  </div>
+  <div id="dqColBox" hidden>
+    <label for="dqCol">Cột</label><select id="dqCol"></select>
+    <label for="dqVal">Giá trị (có chứa, nhiều giá trị cách nhau bằng dấu ;)</label><input id="dqVal">
+  </div>
+  <label>Vị trí</label>
+  <div class="chips" style="margin-top:0"><button id="dqUp">↑ Lên trước</button><button id="dqDown">↓ Xuống sau</button></div>
+  <div class="actions">
+    <button id="dqDelete">Xoá nút</button>
+    <button id="dqCancel">Huỷ</button>
+    <button class="primary" id="dqOk">Lưu</button>
+  </div>
+  <div class="msg" id="dqMsg"></div>
 </dialog>
 
 <dialog id="dlgSched">
@@ -307,11 +335,11 @@ let COLUMNS = [];
 fetch("columns.json").then((r) => r.json()).then((c) => {
   COLUMNS = c;
   const opts = c.map((x) => `<option>${esc(x)}</option>`).join("");
-  $("col").innerHTML = opts; $("dsCol").innerHTML = opts;
+  $("col").innerHTML = opts; $("dsCol").innerHTML = opts; $("dqCol").innerHTML = opts;
 }).catch(() => {});
 
 // ---------- Tải ngay ----------
-fillModes($("mode")); fillModes($("dsMode"));
+fillModes($("mode")); fillModes($("dsMode")); fillModes($("dqMode"));
 const iso = (d) => d.toISOString().slice(0, 10);
 const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d; };
 const QUICK = [
@@ -366,9 +394,10 @@ function quickSub(q) {
   return MODE_NAME[q.che_do] || q.che_do;
 }
 function renderQuick() {
-  $("quickGrid").innerHTML = quick.nut.map((q, i) => `<button class="qb" data-q="${i}">📥 ${esc(q.ten)}<small>${esc(quickSub(q))}</small>${quickEdit ? `<span class="qx" data-del="${i}" title="Xoá nút">×</span>` : ""}</button>`).join("")
+  $("quickGrid").innerHTML = quick.nut.map((q, i) => `<button class="qb" data-q="${i}">📥 ${esc(q.ten)}<small>${esc(quickSub(q))}</small>${quickEdit ? `<span class="qx" title="Sửa nút">✏️</span>` : ""}</button>`).join("")
     || `<p class="hint">Chưa có nút nào.</p>`;
-  $("btnQuickEdit").textContent = quickEdit ? "Xong" : "Sửa";
+  $("btnQuickEdit").textContent = quickEdit ? "✓ Xong" : "✏️ Tùy chỉnh";
+  $("quickEditBar").hidden = !quickEdit;
 }
 async function loadQuick() {
   try {
@@ -385,22 +414,70 @@ async function saveQuick(note) {
   quickSha = r.content.sha;
 }
 $("quickGrid").onclick = async (e) => {
-  const del = e.target.closest("[data-del]"), btn = e.target.closest("[data-q]");
-  if (del) {
-    const q = quick.nut[+del.dataset.del];
-    if (!confirm(`Xoá nút "${q.ten}"?`)) return;
-    quick.nut.splice(+del.dataset.del, 1);
-    try { await saveQuick("Xoá nút tải nhanh từ web"); renderQuick(); show($("quickMsg"), `Đã xoá nút "${q.ten}".`); }
-    catch (err) { show($("quickMsg"), "Xoá thất bại: " + err.message, false); loadQuick(); }
-    return;
-  }
-  if (!btn || quickEdit) return;
+  const btn = e.target.closest("[data-q]");
+  if (!btn) return;
+  if (quickEdit) return openQuick(+btn.dataset.q);
   const q = quick.nut[+btn.dataset.q];
   const inputs = Object.fromEntries(QKEYS.map((k) => [k, q[k] || ""]));
   inputs.nguon = `Web · Tải nhanh · ${q.ten} · ${new Date().toLocaleString("vi-VN")}`;
   btn.disabled = true; await dispatchRun(inputs, $("quickMsg")); btn.disabled = false;
 };
-$("btnQuickEdit").onclick = () => { quickEdit = !quickEdit; renderQuick(); };
+$("btnQuickEdit").onclick = () => {
+  if (!quickEdit && !cfg.token) return show($("quickMsg"), "Cần kết nối GitHub ở Cài đặt trước.", false);
+  quickEdit = !quickEdit; renderQuick(); $("quickMsg").className = "msg";
+};
+// ---- Hộp sửa nút ----
+let qEditing = -1;
+const DQ_CHIPS = [["Hôm nay", "hom_nay", "hom_nay"], ["Hôm qua", "hom_qua", "hom_qua"], ["Ngày mai", "ngay_mai", "ngay_mai"],
+  ["7 ngày tới", "hom_nay", "+7"], ["7 ngày qua", "-7", "hom_nay"], ["30 ngày qua", "-30", "hom_nay"], ["30 ngày tới", "hom_nay", "+30"]];
+$("dqChips").innerHTML = DQ_CHIPS.map((c, i) => `<button data-c="${i}">${c[0]}</button>`).join("");
+$("dqChips").onclick = (e) => { const c = DQ_CHIPS[e.target.dataset.c]; if (c) { $("dqFrom").value = c[1]; $("dqTo").value = c[2]; } };
+const DAY_OK = (v) => !v || /^(hom_nay|hom_qua|ngay_mai|[+-]\d{1,4}|\d{1,2}\/\d{1,2}\/\d{4})$/.test(v);
+function syncDq() {
+  const m = $("dqMode").value;
+  $("dqDateBox").hidden = !["etd", "eta", "ha_hang"].includes(m); $("dqColBox").hidden = m !== "column";
+}
+$("dqMode").onchange = syncDq;
+function openQuick(i) {
+  qEditing = i;
+  const q = i >= 0 ? quick.nut[i] : { ten: "", che_do: "etd", tu_ngay: "hom_nay", den_ngay: "+7", cot: "", gia_tri: "" };
+  $("dqTitle").textContent = i >= 0 ? "Sửa nút" : "Thêm nút";
+  $("dqName").value = q.ten; $("dqMode").value = q.che_do; $("dqFrom").value = q.tu_ngay || ""; $("dqTo").value = q.den_ngay || "";
+  $("dqCol").value = q.cot || COLUMNS[0] || ""; $("dqVal").value = q.gia_tri || "";
+  $("dqDelete").hidden = $("dqUp").hidden = $("dqDown").hidden = i < 0;
+  $("dqUp").disabled = i <= 0; $("dqDown").disabled = i >= quick.nut.length - 1;
+  $("dqMsg").className = "msg"; syncDq(); $("dlgQuick").showModal();
+}
+async function commitQuick(note, okText) {
+  const backup = JSON.stringify(quick);
+  try { await saveQuick(note); renderQuick(); $("dlgQuick").close(); show($("quickMsg"), okText); }
+  catch (e) { quick = JSON.parse(backup); show($("dqMsg"), "Lưu thất bại: " + e.message, false); await loadQuick(); }
+}
+$("btnQuickNew").onclick = () => openQuick(-1);
+$("dqCancel").onclick = () => $("dlgQuick").close();
+$("dqOk").onclick = async () => {
+  const m = $("dqMode").value, isDate = ["etd", "eta", "ha_hang"].includes(m);
+  const q = { ten: $("dqName").value.trim(), che_do: m, tu_ngay: isDate ? $("dqFrom").value.trim() : "", den_ngay: isDate ? $("dqTo").value.trim() : "",
+    cot: m === "column" ? $("dqCol").value : "", gia_tri: m === "column" ? $("dqVal").value.trim() : "" };
+  if (!q.ten) return show($("dqMsg"), "Nhập tên nút.", false);
+  if (quick.nut.some((x, j) => x.ten === q.ten && j !== qEditing)) return show($("dqMsg"), "Đã có nút trùng tên.", false);
+  if (!DAY_OK(q.tu_ngay) || !DAY_OK(q.den_ngay)) return show($("dqMsg"), "Ngày chưa đúng dạng (hom_nay, +7, -7 hoặc dd/mm/yyyy).", false);
+  if (m === "column" && !q.gia_tri) return show($("dqMsg"), "Nhập giá trị cần lọc.", false);
+  if (qEditing >= 0) quick.nut[qEditing] = q; else quick.nut.push(q);
+  await commitQuick(qEditing >= 0 ? "Sửa nút tải nhanh từ web" : "Thêm nút tải nhanh từ web", `✅ Đã lưu nút "${q.ten}".`);
+};
+$("dqDelete").onclick = async () => {
+  const q = quick.nut[qEditing];
+  if (!confirm(`Xoá nút "${q.ten}"?`)) return;
+  quick.nut.splice(qEditing, 1);
+  await commitQuick("Xoá nút tải nhanh từ web", `Đã xoá nút "${q.ten}".`);
+};
+async function moveQuick(d) {
+  const j = qEditing + d; if (j < 0 || j >= quick.nut.length) return;
+  [quick.nut[qEditing], quick.nut[j]] = [quick.nut[j], quick.nut[qEditing]];
+  await commitQuick("Đổi thứ tự nút tải nhanh từ web", "✅ Đã đổi thứ tự.");
+}
+$("dqUp").onclick = () => moveQuick(-1); $("dqDown").onclick = () => moveQuick(1);
 // Ngày trên ô chọn -> ngày tương đối (hom_nay, +7, -7) để nút luôn tính theo ngày bấm
 function relDay(v) {
   if (!v) return "";
