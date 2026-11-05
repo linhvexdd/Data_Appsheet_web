@@ -1,10 +1,44 @@
 {
   "nut": [
-    {"ten": "Tất cả", "che_do": "all", "tu_ngay": "", "den_ngay": "", "cot": "", "gia_tri": ""},
-    {"ten": "ETD hôm nay", "che_do": "etd", "tu_ngay": "hom_nay", "den_ngay": "hom_nay", "cot": "", "gia_tri": ""},
-    {"ten": "ETD 7 ngày tới", "che_do": "etd", "tu_ngay": "hom_nay", "den_ngay": "+7", "cot": "", "gia_tri": ""},
-    {"ten": "ETA 7 ngày tới", "che_do": "eta", "tu_ngay": "hom_nay", "den_ngay": "+7", "cot": "", "gia_tri": ""},
-    {"ten": "Hạ hàng hôm nay", "che_do": "ha_hang", "tu_ngay": "hom_nay", "den_ngay": "hom_nay", "cot": "", "gia_tri": ""},
-    {"ten": "Hạ hàng 7 ngày qua", "che_do": "ha_hang", "tu_ngay": "-7", "den_ngay": "hom_nay", "cot": "", "gia_tri": ""}
+    {
+      "ten": "Tất cả",
+      "che_do": "all",
+      "tu_ngay": "",
+      "den_ngay": "",
+      "cot": "",
+      "gia_tri": ""
+    },
+    {
+      "ten": "ETD 7 ngày tới",
+      "che_do": "etd",
+      "tu_ngay": "hom_nay",
+      "den_ngay": "+7",
+      "cot": "",
+      "gia_tri": ""
+    },
+    {
+      "ten": "ETA 7 ngày tới",
+      "che_do": "eta",
+      "tu_ngay": "hom_nay",
+      "den_ngay": "+7",
+      "cot": "",
+      "gia_tri": ""
+    },
+    {
+      "ten": "Hạ hàng hôm nay",
+      "che_do": "ha_hang",
+      "tu_ngay": "hom_nay",
+      "den_ngay": "hom_nay",
+      "cot": "",
+      "gia_tri": ""
+    },
+    {
+      "ten": "Hạ hàng 7 ngày qua",
+      "che_do": "ha_hang",
+      "tu_ngay": "-7",
+      "den_ngay": "hom_nay",
+      "cot": "",
+      "gia_tri": ""
+    }
   ]
 }
