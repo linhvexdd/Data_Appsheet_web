@@ -83,7 +83,7 @@
     <button class="tab active" data-tab="now">Tải ngay</button>
     <button class="tab" data-tab="sched">Lịch tự động</button>
     <button class="tab" data-tab="hist">Lịch sử</button>
-    <button class="tab" data-tab="cookie">Cookie</button>
+    <button class="tab" data-tab="cookie">Kết nối</button>
   </nav>
 
   <!-- TẢI NGAY -->
@@ -152,6 +152,18 @@
       <div class="msg" id="ckMsg"></div>
       <p class="hint">Cookie được mã hóa ngay trên trình duyệt rồi lưu thẳng vào GitHub Secret <code>APPSHEET_COOKIES</code> của repo tải dữ liệu. Trang web không giữ lại cookie, và không ai đọc lại được secret. Mã truy cập GitHub cần thêm quyền <b>Secrets: Read and write</b>.</p>
       <p class="hint" id="ckUpdated"></p>
+    </div>
+
+    <div class="card">
+      <h2>Google Sheet</h2>
+      <p class="hint" style="margin-top:0">Mỗi lượt chạy sẽ ghi toàn bộ data vào trang tính <b>DATA TỔNG HỢP</b> của Google Sheet (bỏ qua nếu data không đổi). Cách tạo link và mã bí mật: xem <a href="https://github.com/linhvexdd/Data_Appsheet#6-google-sheet-t%C3%B9y-ch%E1%BB%8Dn" target="_blank" rel="noopener">hướng dẫn</a>.</p>
+      <label for="gsUrl">URL ứng dụng web Apps Script (kết thúc bằng /exec)</label>
+      <input id="gsUrl" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
+      <label for="gsToken">Mã bí mật (từ hàm taoMaBiMat)</label>
+      <input id="gsToken" type="password" autocomplete="off">
+      <div class="actions"><button class="primary" id="btnGsSave">Lưu kết nối Google Sheet</button></div>
+      <div class="msg" id="gsMsg"></div>
+      <p class="hint" id="gsUpdated"></p>
     </div>
   </section>
 </main>
@@ -440,7 +452,34 @@ $("ckText").oninput = () => {
       (soonest ? ` · cookie sớm hết hạn nhất: ${soonest.toLocaleString("vi-VN")}` : "");
   } catch (e) { $("ckInfo").textContent = "✖ " + e.message; }
 };
+async function saveSecret(name, value) {
+  const [sodium, key] = await Promise.all([loadSodium(), gh(`/repos/${cfg.target}/actions/secrets/public-key`)]);
+  const sealed = sodium.crypto_box_seal(sodium.from_string(value), sodium.from_base64(key.key, sodium.base64_variants.ORIGINAL));
+  await gh(`/repos/${cfg.target}/actions/secrets/${name}`, { method: "PUT",
+    body: JSON.stringify({ encrypted_value: sodium.to_base64(sealed, sodium.base64_variants.ORIGINAL), key_id: key.key_id }) });
+}
+const permHint = (m) => m + (/quyền/.test(m) ? " Hãy sửa mã truy cập GitHub, thêm quyền Secrets: Read and write cho repo tải dữ liệu." : "");
+async function loadGsInfo() {
+  try {
+    const s = await gh(`/repos/${cfg.target}/actions/secrets/GSHEET_URL`);
+    $("gsUpdated").textContent = `Đã kết nối, cập nhật lúc ${new Date(s.updated_at).toLocaleString("vi-VN")}.`;
+  } catch { $("gsUpdated").textContent = "Chưa kết nối Google Sheet."; }
+}
+$("btnGsSave").onclick = async () => {
+  const url = $("gsUrl").value.trim(), token = $("gsToken").value.trim();
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) return show($("gsMsg"), "URL phải bắt đầu bằng https://script.google.com/ và kết thúc bằng /exec.", false);
+  if (token.length < 16) return show($("gsMsg"), "Dán mã bí mật lấy từ hàm taoMaBiMat.", false);
+  $("btnGsSave").disabled = true;
+  try {
+    await saveSecret("GSHEET_URL", url); await saveSecret("GSHEET_TOKEN", token);
+    $("gsUrl").value = ""; $("gsToken").value = "";
+    show($("gsMsg"), "✅ Đã lưu. Lượt tải tiếp theo sẽ ghi data vào Google Sheet.");
+    loadGsInfo();
+  } catch (e) { show($("gsMsg"), permHint(e.message), false); }
+  $("btnGsSave").disabled = false;
+};
 async function loadCookieInfo() {
+  loadGsInfo();
   if (!cfg.token) return;
   try {
     const s = await gh(`/repos/${cfg.target}/actions/secrets/APPSHEET_COOKIES`);
@@ -457,16 +496,12 @@ $("btnCkSave").onclick = async () => {
   try { parsed = parseCookies(t); } catch (e) { return show($("ckMsg"), e.message, false); }
   $("btnCkSave").disabled = true;
   try {
-    const [sodium, key] = await Promise.all([loadSodium(), gh(`/repos/${cfg.target}/actions/secrets/public-key`)]);
-    const sealed = sodium.crypto_box_seal(sodium.from_string(JSON.stringify(parsed.list)),
-      sodium.from_base64(key.key, sodium.base64_variants.ORIGINAL));
-    await gh(`/repos/${cfg.target}/actions/secrets/APPSHEET_COOKIES`, { method: "PUT",
-      body: JSON.stringify({ encrypted_value: sodium.to_base64(sealed, sodium.base64_variants.ORIGINAL), key_id: key.key_id }) });
+    await saveSecret("APPSHEET_COOKIES", JSON.stringify(parsed.list));
     $("ckText").value = ""; $("ckInfo").textContent = "";
     show($("ckMsg"), `✅ Đã lưu ${parsed.list.length} cookie. Bấm "Kiểm tra cookie đang lưu" để thử đăng nhập.`);
     loadCookieInfo();
   } catch (e) {
-    show($("ckMsg"), e.message + (/quyền/.test(e.message) ? " Hãy sửa mã truy cập GitHub, thêm quyền Secrets: Read and write cho repo tải dữ liệu." : ""), false);
+    show($("ckMsg"), permHint(e.message), false);
   }
   $("btnCkSave").disabled = false;
 };
