@@ -2,12 +2,21 @@
   "lich": [
     {
       "id": "etd-sang",
-      "ten": "ETD 7 ngày tới, mỗi sáng",
-      "bat": false,
-      "gio": "07:30",
-      "thu": [1, 2, 3, 4, 5, 6],
-      "che_do": "etd",
-      "tu_ngay": "hom_nay",
+      "ten": "Hạ hàng cảng xuất 2026",
+      "bat": true,
+      "tan_suat": "lap",
+      "gio": "08:00",
+      "den_gio": "18:00",
+      "moi": 60,
+      "thu": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "che_do": "ha_hang",
+      "tu_ngay": "01/01/2026",
       "den_ngay": "+7",
       "cot": "",
       "gia_tri": ""
