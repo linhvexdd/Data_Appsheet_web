@@ -39,6 +39,11 @@
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .chips button { padding: 4px 10px; font-size: 13px; border-radius: 99px; }
+  .quick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .quick-grid .qb { position: relative; text-align: left; padding: 10px 12px; font-weight: 600; }
+  .quick-grid .qb small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+  .quick-grid .qx { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; padding: 0; border-radius: 99px;
+    background: var(--err); color: #fff; border: 0; font-size: 14px; line-height: 24px; }
   .days { display: flex; flex-wrap: wrap; gap: 6px; }
   .days label { margin: 0; display: flex; align-items: center; gap: 4px; color: var(--text);
     border: 1px solid var(--line); border-radius: 99px; padding: 3px 10px; font-size: 13px; }
@@ -89,6 +94,12 @@
   <!-- TẢI NGAY -->
   <section id="tab-now">
     <div class="card">
+      <h2>Tải nhanh <button class="small" id="btnQuickEdit" style="float:right">Sửa</button></h2>
+      <div class="quick-grid" id="quickGrid"></div>
+      <div class="msg" id="quickMsg"></div>
+      <p class="hint">Bấm 1 nút là tải ngay. Các nút này cũng hiện trong menu bot Telegram. Muốn thêm nút: chọn bộ lọc bên dưới rồi bấm <b>Lưu thành nút tải nhanh</b>.</p>
+    </div>
+    <div class="card">
       <h2>Chọn bộ lọc</h2>
       <label for="mode">Kiểu lọc</label>
       <select id="mode"></select>
@@ -105,7 +116,7 @@
         <label for="val">Giá trị (có chứa, nhiều giá trị cách nhau bằng dấu ;)</label>
         <input id="val" placeholder="ví dụ: Bến Nghé; VICT">
       </div>
-      <div class="actions"><button class="primary" id="btnRun">Tải dữ liệu</button></div>
+      <div class="actions"><button id="btnAddQuick">☆ Lưu thành nút tải nhanh</button><button class="primary" id="btnRun">Tải dữ liệu</button></div>
       <div class="msg" id="runMsg"></div>
       <p class="hint">Mất khoảng 2 phút. File Excel được gửi vào Telegram, và lưu ở mục Artifacts của lượt chạy.</p>
     </div>
@@ -336,11 +347,79 @@ $("btnRun").onclick = async () => {
   if (m === "column") { inputs.cot = $("col").value; inputs.gia_tri = $("val").value.trim(); label += `: ${inputs.cot} = ${inputs.gia_tri}`; }
   inputs.nguon = `Web · ${label} · ${new Date().toLocaleString("vi-VN")}`;
   $("btnRun").disabled = true;
+  await dispatchRun(inputs, $("runMsg"));
+  $("btnRun").disabled = false;
+};
+async function dispatchRun(inputs, msgEl) {
   try {
     await gh(`/repos/${cfg.target}/actions/workflows/${WORKFLOW}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main", inputs }) });
-    show($("runMsg"), "✅ Đã gửi yêu cầu. Khoảng 2 phút nữa file sẽ đến Telegram. Xem tiến độ ở tab Lịch sử.");
-  } catch (e) { show($("runMsg"), e.message, false); }
-  $("btnRun").disabled = false;
+    show(msgEl, "✅ Đã gửi yêu cầu. Khoảng 2 phút nữa file sẽ đến Telegram. Xem tiến độ ở tab Lịch sử.");
+  } catch (e) { show(msgEl, e.message, false); }
+}
+
+// ---------- Tải nhanh ----------
+let quick = { nut: [] }, quickSha = null, quickEdit = false;
+const QKEYS = ["che_do", "tu_ngay", "den_ngay", "cot", "gia_tri"];
+function quickSub(q) {
+  if (["etd", "eta", "ha_hang"].includes(q.che_do)) return `${MODE_NAME[q.che_do].replace("Lọc theo ", "")}: ${REL(q.tu_ngay)} → ${REL(q.den_ngay)}`;
+  if (q.che_do === "column") return `${q.cot} = ${q.gia_tri}`;
+  return MODE_NAME[q.che_do] || q.che_do;
+}
+function renderQuick() {
+  $("quickGrid").innerHTML = quick.nut.map((q, i) => `<button class="qb" data-q="${i}">📥 ${esc(q.ten)}<small>${esc(quickSub(q))}</small>${quickEdit ? `<span class="qx" data-del="${i}" title="Xoá nút">×</span>` : ""}</button>`).join("")
+    || `<p class="hint">Chưa có nút nào.</p>`;
+  $("btnQuickEdit").textContent = quickEdit ? "Xong" : "Sửa";
+}
+async function loadQuick() {
+  try {
+    if (cfg.token) {
+      const f = await gh(`/repos/${cfg.sched}/contents/shortcuts.json`);
+      quickSha = f.sha; quick = JSON.parse(b64decode(f.content));
+    } else { quick = await (await fetch("shortcuts.json", { cache: "no-store" })).json(); }
+  } catch (e) { quickSha = null; quick = { nut: [] }; if (!/Không thấy/.test(e.message)) show($("quickMsg"), "Không đọc được nút tải nhanh: " + e.message, false); }
+  renderQuick();
+}
+async function saveQuick(note) {
+  const r = await gh(`/repos/${cfg.sched}/contents/shortcuts.json`, { method: "PUT", body: JSON.stringify({
+    message: note, ...(quickSha ? { sha: quickSha } : {}), content: b64encode(JSON.stringify(quick, null, 2) + "\n") }) });
+  quickSha = r.content.sha;
+}
+$("quickGrid").onclick = async (e) => {
+  const del = e.target.closest("[data-del]"), btn = e.target.closest("[data-q]");
+  if (del) {
+    const q = quick.nut[+del.dataset.del];
+    if (!confirm(`Xoá nút "${q.ten}"?`)) return;
+    quick.nut.splice(+del.dataset.del, 1);
+    try { await saveQuick("Xoá nút tải nhanh từ web"); renderQuick(); show($("quickMsg"), `Đã xoá nút "${q.ten}".`); }
+    catch (err) { show($("quickMsg"), "Xoá thất bại: " + err.message, false); loadQuick(); }
+    return;
+  }
+  if (!btn || quickEdit) return;
+  const q = quick.nut[+btn.dataset.q];
+  const inputs = Object.fromEntries(QKEYS.map((k) => [k, q[k] || ""]));
+  inputs.nguon = `Web · Tải nhanh · ${q.ten} · ${new Date().toLocaleString("vi-VN")}`;
+  btn.disabled = true; await dispatchRun(inputs, $("quickMsg")); btn.disabled = false;
+};
+$("btnQuickEdit").onclick = () => { quickEdit = !quickEdit; renderQuick(); };
+// Ngày trên ô chọn -> ngày tương đối (hom_nay, +7, -7) để nút luôn tính theo ngày bấm
+function relDay(v) {
+  if (!v) return "";
+  const [y, m, d] = v.split("-").map(Number), t = new Date();
+  const n = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(t.getFullYear(), t.getMonth(), t.getDate())) / 864e5);
+  return n === 0 ? "hom_nay" : (n > 0 ? "+" : "") + n;
+}
+$("btnAddQuick").onclick = async () => {
+  if (!cfg.token) return show($("runMsg"), "Cần kết nối GitHub ở Cài đặt trước.", false);
+  const m = $("mode").value, q = { ten: "", che_do: m, tu_ngay: "", den_ngay: "", cot: "", gia_tri: "" };
+  if (!$("dateBox").hidden) { q.tu_ngay = relDay($("from").value); q.den_ngay = relDay($("to").value); }
+  if (m === "column") { q.cot = $("col").value; q.gia_tri = $("val").value.trim(); if (!q.gia_tri) return show($("runMsg"), "Nhập giá trị cần lọc.", false); }
+  const ten = prompt(`Tên nút (${quickSub(q)}):`, MODE_NAME[m].replace("Lọc theo ", ""));
+  if (!ten || !ten.trim()) return;
+  q.ten = ten.trim().slice(0, 40);
+  if (quick.nut.some((x) => x.ten === q.ten)) return show($("runMsg"), "Đã có nút trùng tên.", false);
+  quick.nut.push(q);
+  try { await saveQuick("Thêm nút tải nhanh từ web"); renderQuick(); show($("runMsg"), `✅ Đã thêm nút "${q.ten}" (${quickSub(q)}).`); }
+  catch (e) { quick.nut.pop(); show($("runMsg"), "Lưu thất bại: " + e.message, false); }
 };
 
 // ---------- Lịch ----------
@@ -593,12 +672,13 @@ $("sSave").onclick = async () => {
   store("gh_token", $("sToken").value.trim()); store("gh_target", $("sTarget").value.trim()); store("gh_sched", $("sSched").value.trim());
   try {
     await gh(`/repos/${cfg.target}`); await gh(`/repos/${cfg.sched}`);
-    show($("sMsg"), "✅ Kết nối thành công."); refreshSetup();
+    show($("sMsg"), "✅ Kết nối thành công."); refreshSetup(); loadQuick();
     setTimeout(() => $("dlgSettings").close(), 800);
   } catch (e) { show($("sMsg"), e.message, false); }
 };
 function refreshSetup() { $("setupCard").hidden = !!cfg.token; }
 refreshSetup();
+loadQuick();
 if (!cfg.token) openSettings();
 </script>
 </body>
