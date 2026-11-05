@@ -15,6 +15,14 @@
       "den_ngay": "hom_nay",
       "cot": "",
       "gia_tri": ""
+    },
+    {
+      "ten": "ETD tháng trước đến hiện tại",
+      "che_do": "etd",
+      "tu_ngay": "01/10/2026",
+      "den_ngay": "hom_nay",
+      "cot": "",
+      "gia_tri": ""
     }
   ]
 }
